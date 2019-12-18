@@ -19,41 +19,84 @@ import recordEvent from "@/services/recordEvent";
 import QueryVisualizationTabs from "./components/QueryVisualizationTabs";
 import { EditVisualizationButton } from "@/components/EditVisualizationButton";
 import useQueryResult from "@/lib/hooks/useQueryResult";
+import useForceUpdate from "@/lib/hooks/useForceUpdate";
 import { pluralize, durationHumanize } from "@/filters";
 import { updateQuery } from "./utils";
 
 import "./query-view.less";
 import useVisualizationTabHandler from "./utils/useVisualizationTabHandler";
+import deleteQueryVisualization from "./utils/deleteQueryVisualization";
+
+function QueryPropertyList({ query, dataSource }) {
+  return (
+    <div className="query-property-list">
+      <div className="query-property">
+        <img src={query.user.profile_image_url} className="profile__image_thumb" alt={query.user.name} />
+        <strong>{query.user.name}</strong>
+        {" created "}
+        <TimeAgo date={query.created_at} />
+      </div>
+      <div className="query-property">
+        <img
+          src={query.last_modified_by.profile_image_url}
+          className="profile__image_thumb"
+          alt={query.last_modified_by.name}
+        />
+        <strong>{query.last_modified_by.name}</strong>
+        {" updated "}
+        <TimeAgo date={query.updated_at} />
+      </div>
+      {dataSource && (
+        <div className="query-property">
+          <img src={`${IMG_ROOT}/${dataSource.type}.png`} width="20" alt={dataSource.type} />
+          {dataSource.name}
+        </div>
+      )}
+      <span className="flex-fill" />
+      <div className="query-property">
+        <i className="zmdi zmdi-refresh m-r-5" />
+        Refresh Schedule
+        <a className="clickable m-l-5">
+          <SchedulePhrase schedule={query.schedule} isNew={false} />
+        </a>
+      </div>
+    </div>
+  );
+}
 
 function QueryView(props) {
   const [query, setQuery] = useState(props.query);
   const [selectedTab, setSelectedTab] = useVisualizationTabHandler(query.visualizations);
-  const currentVisualization = useMemo(() => find(query.visualizations, { id: selectedTab }), [query.visualizations, selectedTab])
+  const currentVisualization = useMemo(() => find(query.visualizations, { id: selectedTab }), [
+    query.visualizations,
+    selectedTab,
+  ]);
   const parameters = useMemo(() => query.getParametersDefs(), [query]);
   const [dataSource, setDataSource] = useState();
   const queryResult = useMemo(() => query.getQueryResult(), [query]);
   const queryResultData = useQueryResult(queryResult);
+  const forceUpdate = useForceUpdate();
 
   const saveDescription = useCallback(
-    (description) => {
+    description => {
       recordEvent("edit_description", "query", query.id);
       updateQuery(query, { description }).then(setQuery);
     },
-    [query],
+    [query]
   );
 
   const openVisualizationEditor = useCallback(
-    (visId) => {
+    visId => {
       EditVisualizationDialog.showModal({
         query,
         visualization: find(query.visualizations, { id: visId }),
         queryResult,
       }).result.then(visualization => {
         setSelectedTab(visualization.id);
-        // TODO: Properly update state
+        forceUpdate();
       });
     },
-    [query, queryResult, setSelectedTab],
+    [forceUpdate, query, queryResult, setSelectedTab]
   );
 
   useEffect(() => {
@@ -78,37 +121,7 @@ function QueryView(props) {
             ignoreBlanks={false}
           />
           <Divider />
-          <div className="query-property-list">
-            <div className="query-property">
-              <img src={query.user.profile_image_url} className="profile__image_thumb" alt={query.user.name} />
-              <strong>{query.user.name}</strong>
-              {" created "}
-              <TimeAgo date={query.created_at} />
-            </div>
-            <div className="query-property">
-              <img
-                src={query.last_modified_by.profile_image_url}
-                className="profile__image_thumb"
-                alt={query.last_modified_by.name}
-              />
-              <strong>{query.last_modified_by.name}</strong>
-              {" updated "}
-              <TimeAgo date={query.updated_at} />
-            </div>
-            {dataSource && (
-              <div className="query-property">
-                <img src={`${IMG_ROOT}/${dataSource.type}.png`} width="20" alt={dataSource.type} />
-                {dataSource.name}
-              </div>
-            )}
-            <span className="flex-fill" />
-            <div className="query-property">
-              <i className="zmdi zmdi-refresh m-r-5" />Refresh Schedule
-              <a className="clickable m-l-5">
-                <SchedulePhrase schedule={query.schedule} isNew={false} />
-              </a>
-            </div>
-          </div>
+          <QueryPropertyList query={query} dataSource={dataSource} />
         </div>
         <div className="query-content tiled bg-white p-15 m-t-15">
           {query.hasParameters() && <Parameters parameters={parameters} />}
@@ -120,6 +133,7 @@ function QueryView(props) {
             selectedTab={selectedTab}
             onChangeTab={setSelectedTab}
             onClickNewVisualization={openVisualizationEditor}
+            onDeleteVisualization={vis => deleteQueryVisualization(query, vis).then(setQuery)}
           />
           <Divider />
           <div className="d-flex align-items-center">
@@ -129,9 +143,11 @@ function QueryView(props) {
               queryResult={queryResult}
               queryExecuting={false} /* TODO: Replace with executing state */
               showEmbedDialog={() => EmbedQueryDialog.showEmbedDialog({ query, visualization: currentVisualization })}
-              openAddToDashboardForm={() => AddToDashboardDialog.showModal({
-                visualization: currentVisualization,
-              })}
+              openAddToDashboardForm={() =>
+                AddToDashboardDialog.showModal({
+                  visualization: currentVisualization,
+                })
+              }
             />
             {queryResultData.status === "done" && (
               <>
@@ -147,8 +163,7 @@ function QueryView(props) {
             <span className="flex-fill" />
             {queryResultData.status === "done" && (
               <span className="m-r-10 hidden-xs">
-                Updated{" "}
-                <TimeAgo date={queryResult.query_result.retrieved_at} />
+                Updated <TimeAgo date={queryResult.query_result.retrieved_at} />
               </span>
             )}
             <Button type="primary">Execute</Button>
